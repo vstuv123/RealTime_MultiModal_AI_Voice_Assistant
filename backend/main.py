@@ -24,6 +24,8 @@ from fallbacks import (
     notify_redis_recovered,
 )
 
+MIN_CHARS_FOR_TTS = 50
+
 if os.environ.get("ENV") != "production":
     load_dotenv()  # only loads .env file in local dev, ignored in Docker
 
@@ -354,10 +356,11 @@ async def voice_pipeline_endpoint(websocket: WebSocket):
                         groq_messages += [{"role": "user", "content": user_text}]
 
                     response_stream = await groq_client.chat.completions.create(
-                        model="openai/gpt-oss-120b",
+                        model="openai/gpt-oss-20b",
                         messages=groq_messages,
                         stream=True,
                         temperature=0.4,
+                        reasoning_effort="low",
                     )
 
                     assistant_text_buffer = ""
@@ -437,7 +440,10 @@ async def voice_pipeline_endpoint(websocket: WebSocket):
                         tts_buffer += text_content
 
                         # only send to TTS when we have a complete sentence
-                        if not tts_failed and SENTENCE_END.search(tts_buffer):
+                        if not tts_failed and (
+                            len(tts_buffer) >= MIN_CHARS_FOR_TTS
+                            or SENTENCE_END.search(tts_buffer)
+                        ):
                             cleaned = clean_for_tts(tts_buffer)
                             tts_buffer = ""  # reset buffer
 
@@ -449,7 +455,7 @@ async def voice_pipeline_endpoint(websocket: WebSocket):
                             try:
                                 tts_stream = await asyncio.wait_for(
                                     cartesia_client.tts.sse(
-                                        model_id="sonic-3.5",
+                                        model_id="sonic-turbo",
                                         transcript=cleaned,
                                         voice={
                                             "id": "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
@@ -576,7 +582,7 @@ async def voice_pipeline_endpoint(websocket: WebSocket):
                             try:
                                 tts_stream = await asyncio.wait_for(
                                     cartesia_client.tts.sse(
-                                        model_id="sonic-3.5",
+                                        model_id="sonic-turbo",
                                         transcript=cleaned,
                                         voice={
                                             "id": "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
